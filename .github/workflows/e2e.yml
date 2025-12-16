@@ -1,0 +1,31 @@
+name: E2E Netlify Cypress
+
+on:
+  pull_request:
+    branches:
+      - develop
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Wait for Netlify deploy
+        uses: jakepartusch/wait-for-netlify-action@v1
+        with:
+          site_name: TU_SITE_NAME_NETLIFY
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get Netlify Preview URL
+        id: netlify
+        uses: jsmrcaga/action-netlify-preview-url@v1
+
+      - name: Trigger Cypress tests
+        uses: peter-evans/workflow-dispatch@v1
+        with:
+          token: ${{ secrets.CYPRESS_REPO_TOKEN }}
+          repository: TU_USUARIO_O_ORG/REPO_CYPRESS
+          workflow: cypress.yml
+          ref: develop
+          inputs: |
+            base_url=${{ steps.netlify.outputs.preview_url }}
