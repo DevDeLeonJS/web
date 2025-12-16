@@ -16,19 +16,24 @@ jobs:
           PR_SHA="${{ github.event.pull_request.head.sha }}"
           echo "🔎 Looking for Netlify preview for commit $PR_SHA"
 
-          for i in {1..12}; do
+          for i in {1..15}; do
             RESPONSE=$(curl -s \
               -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" \
-              "https://api.netlify.com/api/v1/sites/web-test-devops/deploys?per_page=20")
+              "https://api.netlify.com/api/v1/sites/$NETLIFY_SITE_ID/deploys?per_page=20")
+
+            echo "📦 Raw response type:"
+            echo "$RESPONSE" | jq 'type'
 
             PREVIEW_URL=$(echo "$RESPONSE" | jq -r --arg SHA "$PR_SHA" '
-              .[] 
-              | select(.context=="deploy-preview" and .commit_ref==$SHA) 
+              .[]
+              | select(type=="object")
+              | select(.context=="deploy-preview")
+              | select(.commit_ref==$SHA)
               | .deploy_ssl_url
             ' | head -n 1)
 
             if [ -n "$PREVIEW_URL" ] && [ "$PREVIEW_URL" != "null" ]; then
-              echo "✅ Found Netlify preview: $PREVIEW_URL"
+              echo "✅ Found preview: $PREVIEW_URL"
               echo "preview_url=$PREVIEW_URL" >> $GITHUB_OUTPUT
               exit 0
             fi
@@ -41,6 +46,7 @@ jobs:
           exit 1
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
           
       - name: Trigger Cypress repo
         run: |
