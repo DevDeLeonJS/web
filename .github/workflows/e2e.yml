@@ -11,21 +11,27 @@ jobs:
 
     steps:
       - name: Wait for Netlify deploy
-        uses: jakepartusch/wait-for-netlify-action@v1
-        with:
-          site_name: web-test-devops
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+        run: sleep 30
 
       - name: Get Netlify Preview URL
-        id: netlify
-        uses: jsmrcaga/action-netlify-preview-url@v1
+        id: preview
+        run: |
+          RESPONSE=$(curl -s \
+            -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" \
+            "https://api.netlify.com/api/v1/sites/web-test-devops/deploys?per_page=1")
 
-      - name: Trigger Cypress tests
-        uses: peter-evans/workflow-dispatch@v1
-        with:
-          token: ${{ secrets.CYPRESS_REPO_TOKEN }}
-          repository: DevDeLeonJS/test-
-          workflow: cypress.yml
-          ref: develop
-          inputs: |
-            base_url=${{ steps.netlify.outputs.preview_url }}
+          PREVIEW_URL=$(echo $RESPONSE | jq -r '.[0].deploy_ssl_url')
+
+          echo "preview_url=$PREVIEW_URL" >> $GITHUB_OUTPUT
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+
+      - name: Trigger Cypress repo
+        run: |
+          curl -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $CYPRESS_REPO_TOKEN" \
+            https://api.github.com/repos/DevDeLeonJS/test-/dispatches \
+            -d '{"event_type":"run-cypress","client_payload":{"base_url":"'"${{ steps.preview.outputs.preview_url }}"'"}}'
+        env:
+          CYPRESS_REPO_TOKEN: ${{ secrets.CYPRESS_REPO_TOKEN }}
