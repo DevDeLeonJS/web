@@ -26,12 +26,8 @@ jobs:
               -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" \
               "https://api.netlify.com/api/v1/sites/$NETLIFY_SITE_ID/deploys?per_page=20")
 
-            echo "📦 Raw response type:"
-            echo "$RESPONSE" | jq 'type'
-
             PREVIEW_URL=$(echo "$RESPONSE" | jq -r --arg SHA "$PR_SHA" '
               .[]
-              | select(type=="object")
               | select(.context=="deploy-preview")
               | select(.commit_ref==$SHA)
               | .deploy_ssl_url
@@ -49,17 +45,29 @@ jobs:
 
           echo "❌ Timeout waiting for Netlify preview"
           exit 1
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
-          
-      - name: Trigger Cypress repo
-        run: |
-          curl -X POST \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer $CYPRESS_REPO_TOKEN" \
-            https://api.github.com/repos/DevDeLeonJS/test-/dispatches \
-            -d '{"event_type":"run-cypress","client_payload":{"base_url":"'"${{ steps.preview.outputs.preview_url }}"'"}}'
+
+      # 2️⃣ Checkout del repo de Cypress
+      - name: Checkout Cypress tests repo
+        uses: actions/checkout@v4
+        with:
+          repository: DevDeLeonJS/test-
+          token: ${{ secrets.CYPRESS_REPO_TOKEN }}
+          path: cypress-tests
+
+      # 3️⃣ Setup Node
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # 4️⃣ Instalar dependencias de Cypress
+      - name: Install Cypress dependencies
+        working-directory: cypress-tests
+        run: npm ci
+
+      # 5️⃣ Ejecutar Cypress (QUALITY GATE)
+      - name: Run Cypress E2E
+        working-directory: cypress-tests
         env:
           CYPRESS_baseUrl: ${{ steps.preview.outputs.preview_url }}
         run: npx cypress run --browser chrome
