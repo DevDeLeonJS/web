@@ -10,33 +10,35 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Wait for Netlify deploy
-        run: sleep 30
-
-      - name: Get Netlify Preview URL
+      - name: Get Netlify preview for this PR
         id: preview
         run: |
-          RESPONSE=$(curl -s \
-            -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" \
-            "https://api.netlify.com/api/v1/sites/web-test-devops/deploys?per_page=5")
+          PR_SHA="${{ github.event.pull_request.head.sha }}"
+          echo "🔎 Looking for Netlify preview for commit $PR_SHA"
 
-          PREVIEW_URL=$(echo "$RESPONSE" | jq -r '
-            if type=="array" then
-              .[] | select(.context=="deploy-preview") | .deploy_ssl_url
-            else
-              .deploys[] | select(.context=="deploy-preview") | .deploy_ssl_url
-            end
-          ' | head -n 1)
+          for i in {1..15}; do
+            RESPONSE=$(curl -s \
+              -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" \
+              "https://api.netlify.com/api/v1/sites/web-test-devops/deploys?per_page=20")
 
-          if [ -z "$PREVIEW_URL" ] || [ "$PREVIEW_URL" = "null" ]; then
-            echo "❌ No Netlify preview deploy found"
-            exit 1
-          fi
+            PREVIEW_URL=$(echo "$RESPONSE" | jq -r --arg SHA "$PR_SHA" '
+              .[] | select(.commit_ref==$SHA and .context=="deploy-preview") | .deploy_ssl_url
+            ' | head -n 1)
 
-          echo "preview_url=$PREVIEW_URL" >> $GITHUB_OUTPUT
+            if [ -n "$PREVIEW_URL" ] && [ "$PREVIEW_URL" != "null" ]; then
+              echo "✅ Found preview: $PREVIEW_URL"
+              echo "preview_url=$PREVIEW_URL" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+
+            echo "⏳ Preview not ready yet, retrying in 10s..."
+            sleep 10
+          done
+
+          echo "❌ Timeout waiting for Netlify preview"
+          exit 1
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-
 
       - name: Trigger Cypress repo
         run: |
