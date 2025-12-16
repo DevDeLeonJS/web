@@ -13,7 +13,7 @@ jobs:
       - name: Wait for Netlify deploy
         uses: jakepartusch/wait-for-netlify-action@v1
         with:
-          site_name: TU_SITE_NAME_NETLIFY
+          site_name: web-test-devops
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get Netlify Preview URL
@@ -24,7 +24,7 @@ jobs:
         uses: peter-evans/workflow-dispatch@v1
         with:
           token: ${{ secrets.CYPRESS_REPO_TOKEN }}
-          repository: TU_USUARIO_O_ORG/REPO_CYPRESS
+          repository: DevDeLeonJS/test-
           workflow: cypress.yml
           ref: develop
           inputs: |
