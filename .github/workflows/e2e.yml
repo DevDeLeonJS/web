@@ -1,73 +1,55 @@
-name: E2E Netlify Cypress
+name: E2E QA
 
 on:
   pull_request:
     branches:
-      - develop
+      - qa
 
 jobs:
   e2e:
-    name: Cypress E2E
+    name: Build app and run E2E
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Obtener Deploy Preview de Netlify
-      - name: Get Netlify preview for this PR
-        id: preview
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      - name: Checkout app repository
+        uses: actions/checkout@v4
+
+      - name: Ensure PR targets QA
         run: |
-          PR_SHA="${{ github.event.pull_request.head.sha }}"
-          echo "🔎 Looking for Netlify preview for commit $PR_SHA"
+          if [ "${{ github.base_ref }}" != "qa" ]; then
+            echo "Not a QA PR, skipping E2E"
+            exit 0
+          fi
 
-          for i in {1..15}; do
-            RESPONSE=$(curl -s \
-              -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" \
-              "https://api.netlify.com/api/v1/sites/$NETLIFY_SITE_ID/deploys?per_page=20")
+      - name: Build frontend Docker image
+        run: docker build -t frontend-e2e .
 
-            PREVIEW_URL=$(echo "$RESPONSE" | jq -r --arg SHA "$PR_SHA" '
-              .[]
-              | select(.context=="deploy-preview")
-              | select(.commit_ref==$SHA)
-              | .deploy_ssl_url
-            ' | head -n 1)
+      - name: Run frontend container
+        run: docker run -d -p 8080:80 --name frontend frontend-e2e
 
-            if [ -n "$PREVIEW_URL" ] && [ "$PREVIEW_URL" != "null" ]; then
-              echo "✅ Found preview: $PREVIEW_URL"
-              echo "preview_url=$PREVIEW_URL" >> $GITHUB_OUTPUT
+      - name: Wait for frontend
+        run: |
+          echo "Waiting for frontend..."
+          for i in {1..20}; do
+            if curl -f http://localhost:8080; then
+              echo "Frontend is up"
               exit 0
             fi
-
-            echo "⏳ Preview not ready yet, retrying in 10s..."
-            sleep 10
+            sleep 2
           done
-
-          echo "❌ Timeout waiting for Netlify preview"
+          echo "Frontend did not start"
           exit 1
 
-      # 2️⃣ Checkout del repo de Cypress
-      - name: Checkout Cypress tests repo
-        uses: actions/checkout@v4
-        with:
-          repository: DevDeLeonJS/test-
-          token: ${{ secrets.CYPRESS_REPO_TOKEN }}
-          path: cypress-tests
+      - name: Clone E2E repository
+        run: |
+          git clone https://github.com/DevDeLeonJS/test-.git e2e
 
-      # 3️⃣ Setup Node
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      # 4️⃣ Instalar dependencias de Cypress
-      - name: Install Cypress dependencies
-        working-directory: cypress-tests
+      - name: Install dependencies
+        working-directory: e2e
         run: npm ci
 
-      # 5️⃣ Ejecutar Cypress (QUALITY GATE)
-      - name: Run Cypress E2E
-        working-directory: cypress-tests
+      - name: Run Cypress tests
+        working-directory: e2e
         env:
-          CYPRESS_baseUrl: ${{ steps.preview.outputs.preview_url }}
+          CYPRESS_baseUrl: http://localhost:8080
         run: npx cypress run --browser chrome
