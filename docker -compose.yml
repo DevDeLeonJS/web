@@ -1,0 +1,9 @@
+services:
+  web:
+    container_name: vite-nginx
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    restart: unless-stopped
