@@ -21,11 +21,9 @@ jobs:
             exit 0
           fi
 
-      - name: Build frontend Docker image
-        run: docker build -t frontend-e2e .
-
-      - name: Run frontend container
-        run: docker run -d -p 8080:80 --name frontend frontend-e2e
+      - name: Build and run app with Docker Compose
+        run: |
+          docker compose up -d --build
 
       - name: Wait for frontend
         run: |
